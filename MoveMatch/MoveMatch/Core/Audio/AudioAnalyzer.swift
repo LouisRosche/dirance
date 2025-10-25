@@ -276,5 +276,6 @@ class MusicLibraryManager {
 
 enum AudioError: Error {
     case invalidURL
-    case analysisFailedcase unsupportedFormat
+    case analysisFailed
+    case unsupportedFormat
 }

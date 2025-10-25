@@ -30,13 +30,7 @@ struct ResultsView: View {
                 // Header
                 VStack(spacing: 12) {
                     // Stars
-                    HStack(spacing: 8) {
-                        ForEach(0..<3) { index in
-                            Image(systemName: index < session.stars ? "star.fill" : "star")
-                                .font(.system(size: 40))
-                                .foregroundColor(index < session.stars ? .yellow : .gray.opacity(0.3))
-                        }
-                    }
+                    AccessibleStarRating(stars: session.stars)
 
                     Text(session.stars == 3 ? "Perfect!" : session.stars == 2 ? "Great!" : session.stars == 1 ? "Good!" : "Keep trying!")
                         .font(.title.bold())
@@ -108,11 +102,14 @@ struct ResultsView: View {
                             .cornerRadius(12)
                         }
                         .padding(.horizontal)
+                        .minimumTouchTarget()
+                        .accessibilityLabel("Watch advertisement to double experience points")
+                        .hapticFeedback(.selection)
                     }
 
                     // Continue button
                     Button {
-                        dismiss()
+                        continueToMenu()
                     } label: {
                         Text("Continue")
                             .font(.headline)
@@ -123,25 +120,80 @@ struct ResultsView: View {
                             .cornerRadius(12)
                     }
                     .padding(.horizontal)
+                    .minimumTouchTarget()
+                    .accessibilityLabel("Continue to main menu")
+                    .hapticFeedback(.selection)
 
                 }
                 .padding(.bottom, 20)
             }
         }
         .interactiveDismissDisabled()
+        .onAppear {
+            // Track analytics: results screen viewed
+            AnalyticsManager.shared.trackSongCompleted(session: session)
+
+            // Haptic feedback based on stars
+            HapticManager.shared.sessionCompleted(stars: session.stars)
+
+            // Announce results to VoiceOver
+            let starsText = session.stars == 1 ? "one star" : "\(session.stars) stars"
+            AccessibilityAnnouncer.announce("Song completed with \(starsText). Score: \(session.score)")
+        }
     }
 
     private func showAdOffer() {
         showingAdOffer = true
 
-        // TODO: Show rewarded ad
-        // For now, just apply bonus
-        Task {
-            try? await Task.sleep(nanoseconds: 2_000_000_000) // Simulate ad
+        // Track analytics: ad requested
+        AnalyticsManager.shared.trackAdRequested(placement: .resultsScreen)
 
-            rewardMultiplier = 2.0
+        // Haptic feedback
+        HapticManager.shared.buttonTap()
+
+        // Show rewarded ad
+        Task {
+            let adManager = AdManager.shared
+            adManager.loadRewardedAd()
+
+            // Wait for ad to load
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+
+            if adManager.isAdReady {
+                // Track ad impression
+                AnalyticsManager.shared.trackAdImpression(placement: .resultsScreen, reward: 2)
+
+                // Simulate ad showing (in real implementation, would call AdMob)
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+
+                // Apply reward
+                rewardMultiplier = 2.0
+
+                // Haptic feedback for reward
+                HapticManager.shared.success()
+
+                // Announce reward to VoiceOver
+                AccessibilityAnnouncer.announce("Bonus applied! XP doubled")
+            } else {
+                // Track ad failure
+                AnalyticsManager.shared.trackAdFailed(error: "no_fill", placement: .resultsScreen)
+
+                // Graceful fallback: give reward anyway
+                rewardMultiplier = 2.0
+
+                // Haptic feedback
+                HapticManager.shared.warning()
+            }
+
             showingAdOffer = false
         }
+    }
+
+    private func continueToMenu() {
+        // Haptic feedback
+        HapticManager.shared.buttonTap()
+
+        dismiss()
     }
 }
 

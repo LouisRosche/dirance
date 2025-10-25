@@ -73,7 +73,15 @@ class GameEngine: ObservableObject {
         gameState = .calibrating
 
         // Generate puzzles
+        let difficulty = difficultyAdjuster.calculateDifficulty(userLevel: userLevel, songIntensity: song.features?.energy ?? 0.5)
         allPuzzles = puzzleGenerator.generatePuzzles(for: song, userLevel: userLevel)
+
+        // Track analytics: song started
+        AnalyticsManager.shared.trackSongStarted(
+            song: song,
+            difficulty: difficulty,
+            userLevel: userLevel
+        )
 
         // Create session
         session = GameSession(
@@ -107,6 +115,12 @@ class GameEngine: ObservableObject {
         guard gameState == .playing else { return }
         gameState = .paused
         audioEngine.pause()
+
+        // Track analytics
+        AnalyticsManager.shared.trackSongPaused(
+            timeIntoSong: sessionTime,
+            score: score
+        )
     }
 
     func resumeGame() {
@@ -129,6 +143,9 @@ class GameEngine: ObservableObject {
             session.caloriesBurned = caloriesBurned
             session.stars = calculateStars()
             self.session = session
+
+            // Track analytics: song completed
+            AnalyticsManager.shared.trackSongCompleted(session: session)
         }
     }
 
@@ -208,19 +225,32 @@ class GameEngine: ObservableObject {
                 uniqueKeysWithValues: puzzle.requirements.map { ($0.move, 0) }
             )
         )
+
+        // Track analytics
+        AnalyticsManager.shared.trackPuzzleAttempted(
+            puzzle: puzzle,
+            difficulty: puzzle.difficultyMultiplier
+        )
+
+        // Haptic feedback
+        HapticManager.shared.buttonTap()
+
+        // Announce to VoiceOver
+        AccessibilityAnnouncer.announcePuzzle(puzzle)
     }
 
     private func finalizePuzzle(_ puzzle: PuzzleChallenge) {
         guard let progress = currentPuzzleProgress else { return }
 
         let completed = checkPuzzleCompletion(puzzle, progress: progress)
+        let completionPercentage = calculateCompletionPercentage(puzzle, progress: progress)
         let stars = calculatePuzzleStars(puzzle, progress: progress)
 
         let result = PuzzleResult(
             puzzleId: puzzle.id,
             completed: completed,
             stars: stars,
-            completionPercentage: calculateCompletionPercentage(puzzle, progress: progress)
+            completionPercentage: completionPercentage
         )
 
         puzzleResults.append(result)
@@ -230,6 +260,18 @@ class GameEngine: ObservableObject {
 
             // Award bonus points for completion
             score += Int(1000 * puzzle.difficultyMultiplier)
+
+            // Track analytics
+            let timeTaken = Date().timeIntervalSince(progress.startTime)
+            AnalyticsManager.shared.trackPuzzleCompleted(
+                puzzle: puzzle,
+                accuracy: completionPercentage,
+                timeTaken: timeTaken
+            )
+
+            // Haptic feedback
+            let perfectTiming = completionPercentage >= 0.95
+            HapticManager.shared.puzzleCompleted(perfectTiming: perfectTiming)
         }
 
         currentPuzzleProgress = nil
@@ -243,14 +285,36 @@ class GameEngine: ObservableObject {
         let isCorrectMove = checkMoveCorrectness(move, for: puzzle, progress: progress)
         let isOnBeat = checkIfOnBeat()
 
+        // Track analytics: move performed
+        AnalyticsManager.shared.trackMovePerformed(
+            move: move,
+            wasCorrect: isCorrectMove,
+            onBeat: isOnBeat,
+            comboCount: currentCombo
+        )
+
         if isCorrectMove {
             // Update progress
             progress.requirements[move, default: 0] += 1
             currentPuzzleProgress = progress
 
             // Increase combo
+            let previousCombo = currentCombo
             currentCombo += 1
             maxCombo = max(maxCombo, currentCombo)
+
+            // Haptic feedback for correct move
+            HapticManager.shared.moveDetected(move: move.rawValue, onBeat: isOnBeat)
+
+            // Announce correct move to VoiceOver
+            AccessibilityAnnouncer.announceMove(move, correct: true)
+
+            // Check combo milestones
+            if currentCombo % 5 == 0 && currentCombo > previousCombo {
+                HapticManager.shared.combo(count: currentCombo)
+                AnalyticsManager.shared.trackComboAchieved(count: currentCombo, maxCombo: maxCombo)
+                AccessibilityAnnouncer.announceCombo(currentCombo)
+            }
 
             // Calculate points
             var points = 100 * currentCombo
@@ -262,7 +326,16 @@ class GameEngine: ObservableObject {
 
         } else {
             // Wrong move - reset combo
+            if currentCombo > 0 {
+                HapticManager.shared.comboLost()
+            }
             currentCombo = 0
+
+            // Haptic feedback for incorrect move
+            HapticManager.shared.moveIncorrect()
+
+            // Announce missed move to VoiceOver
+            AccessibilityAnnouncer.announceMove(move, correct: false)
         }
 
         // Update session move stats

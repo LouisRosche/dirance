@@ -182,6 +182,39 @@ struct GameSession: Codable {
         guard totalPuzzles > 0 else { return 0 }
         return Float(puzzlesCompleted) / Float(totalPuzzles)
     }
+
+    var accuracy: Float {
+        let totalAttempted = movesAttempted.values.reduce(0, +)
+        let totalSucceeded = movesSucceeded.values.reduce(0, +)
+        guard totalAttempted > 0 else { return 0 }
+        return Float(totalSucceeded) / Float(totalAttempted)
+    }
+
+    var xpEarned: Int {
+        return score / 10 // 1 XP per 10 points
+    }
+
+    var starsEarned: Int {
+        return stars
+    }
+
+    var movesPerformed: [DetectedMove] {
+        return Array(movesSucceeded.keys)
+    }
+
+    var duration: TimeInterval {
+        guard let endTime = endTime else { return 0 }
+        return endTime.timeIntervalSince(startTime)
+    }
+}
+
+// MARK: - Puzzle Result
+
+struct PuzzleResult: Codable {
+    let puzzleId: UUID
+    let completed: Bool
+    let stars: Int
+    let completionPercentage: Float
 }
 
 // MARK: - User Profile

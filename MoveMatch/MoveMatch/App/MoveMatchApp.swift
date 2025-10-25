@@ -86,8 +86,11 @@ class AppState: ObservableObject {
             isAuthenticated = true
             await loadUserProfile(userId: userId)
             await loadSongs()
+
+            // Track analytics
+            AnalyticsManager.shared.trackOnboardingCompleted(timeTaken: 5.0)
         } catch {
-            print("❌ Sign in failed: \(error)")
+            ErrorHandler.shared.handle(.firebase(.authenticationFailed))
         }
     }
 
@@ -102,14 +105,20 @@ class AppState: ObservableObject {
         do {
             if let profile = try await firebaseManager.getUserProfile(userId: userId) {
                 currentUser = profile
+
+                // Set user properties for analytics
+                AnalyticsManager.shared.setUserProperties(userId: userId, profile: profile)
             } else {
                 // Create new profile
                 let newProfile = UserProfile(id: userId, displayName: "Player")
                 try await firebaseManager.saveUserProfile(profile: newProfile)
                 currentUser = newProfile
+
+                // Set user properties
+                AnalyticsManager.shared.setUserProperties(userId: userId, profile: newProfile)
             }
         } catch {
-            print("❌ Failed to load profile: \(error)")
+            ErrorHandler.shared.handle(.firebase(.loadFailed))
         }
     }
 
@@ -119,12 +128,21 @@ class AppState: ObservableObject {
         // Request authorization
         let authorized = await musicLibrary.requestAuthorization()
         guard authorized else {
+            ErrorHandler.shared.handle(.audio(.musicPermissionDenied))
             isLoadingSongs = false
             return
         }
 
+        // Track permission granted
+        AnalyticsManager.shared.trackPermissionGranted(permission: .music)
+
         // Fetch songs
         songs = musicLibrary.fetchUserSongs()
+
+        // Check if no songs found
+        if songs.isEmpty {
+            ErrorHandler.shared.handle(.audio(.noSongsInLibrary))
+        }
 
         isLoadingSongs = false
     }
@@ -133,7 +151,7 @@ class AppState: ObservableObject {
         do {
             return try await musicLibrary.analyzeSong(song)
         } catch {
-            print("❌ Song analysis failed: \(error)")
+            ErrorHandler.shared.handle(.audio(.analysisFailed))
             return song
         }
     }

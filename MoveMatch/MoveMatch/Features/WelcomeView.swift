@@ -30,13 +30,15 @@ struct WelcomeView: View {
                     Image(systemName: "figure.dance")
                         .font(.system(size: 100))
                         .foregroundColor(.white)
+                        .accessibilityLabel("Dance icon")
 
                     Text("Move Match")
-                        .font(.system(size: 48, weight: .bold))
+                        .font(.gameTitle())
                         .foregroundColor(.white)
+                        .accessibilityAddTraits(.isHeader)
 
                     Text("Dance to your music,\nsolve puzzles, get fit")
-                        .font(.title3)
+                        .font(.gameBody())
                         .foregroundColor(.white.opacity(0.9))
                         .multilineTextAlignment(.center)
                 }
@@ -59,8 +61,13 @@ struct WelcomeView: View {
                     signIn()
                 } label: {
                     HStack {
-                        Image(systemName: "applelogo")
-                        Text("Sign in with Apple")
+                        if isSigningIn {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .black))
+                        } else {
+                            Image(systemName: "applelogo")
+                            Text("Sign in with Apple")
+                        }
                     }
                     .font(.headline)
                     .foregroundColor(.black)
@@ -71,6 +78,9 @@ struct WelcomeView: View {
                 }
                 .padding(.horizontal, 40)
                 .disabled(isSigningIn)
+                .minimumTouchTarget()
+                .accessibilityLabel("Sign in with Apple")
+                .accessibilityHint("Authenticate to start playing Move Match")
 
                 Text("By signing in, you agree to our Terms of Service")
                     .font(.caption)
@@ -83,10 +93,38 @@ struct WelcomeView: View {
     private func signIn() {
         isSigningIn = true
 
+        // Track analytics: onboarding started
+        AnalyticsManager.shared.trackOnboardingStarted()
+
+        // Haptic feedback
+        HapticManager.shared.buttonTap()
+
         Task {
-            await appState.signIn()
+            do {
+                await appState.signIn()
+
+                // Track analytics: onboarding completed
+                AnalyticsManager.shared.trackOnboardingStep(step: .completion, completed: true)
+
+                // Haptic feedback for success
+                HapticManager.shared.success()
+            } catch {
+                // Handle error
+                ErrorHandler.shared.handle(.firebase(.authenticationFailed)) {
+                    signIn() // Retry
+                }
+            }
             isSigningIn = false
         }
+    }
+}
+
+// MARK: - Onboarding Entry Point
+
+extension WelcomeView {
+    func onAppear() {
+        // Track screen view
+        AnalyticsManager.shared.trackOnboardingStarted()
     }
 }
 

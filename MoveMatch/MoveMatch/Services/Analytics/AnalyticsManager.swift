@@ -33,7 +33,7 @@ class AnalyticsManager {
         Analytics.setUserProperty(profile.isVIP ? "true" : "false", forName: "is_vip")
 
         // Engagement tier
-        let songsPlayed = profile.totalSongsPlayed ?? 0
+        let songsPlayed = profile.totalSongsPlayed
         let tier: String
         if songsPlayed < 10 {
             tier = "new"
@@ -221,6 +221,35 @@ class AnalyticsManager {
     func trackIAPRestored(productsRestored: Int) {
         Analytics.logEvent("iap_restored", parameters: [
             "products_restored": productsRestored
+        ])
+    }
+
+    func trackIAPAttempt(productId: String, price: Double) {
+        Analytics.logEvent("iap_attempt", parameters: [
+            "product_id": productId,
+            "price": price
+        ])
+    }
+
+    func trackIAPSuccess(productId: String, price: Double, revenue: Double) {
+        Analytics.logEvent(AnalyticsEventPurchase, parameters: [
+            AnalyticsParameterItemID: productId,
+            AnalyticsParameterValue: revenue,
+            AnalyticsParameterCurrency: "USD"
+        ])
+    }
+
+    func trackIAPFailed(productId: String, reason: String) {
+        Analytics.logEvent("iap_failed", parameters: [
+            "product_id": productId,
+            "reason": reason
+        ])
+    }
+
+    func trackSubscriptionStarted(plan: String) {
+        Analytics.logEvent("subscription_started", parameters: [
+            "plan": plan,
+            "timestamp": Date().timeIntervalSince1970
         ])
     }
 

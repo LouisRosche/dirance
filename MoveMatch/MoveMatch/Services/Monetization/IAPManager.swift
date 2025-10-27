@@ -15,7 +15,7 @@ class IAPManager: ObservableObject {
     @Published var purchasedProductIDs: Set<String> = []
 
     private var transactionListener: Task<Void, Error>?
-    private weak var appState: AppState?
+    var appState: AppState?
 
     init(appState: AppState? = nil) {
         self.appState = appState
@@ -159,7 +159,7 @@ class IAPManager: ObservableObject {
             do {
                 try await appState.firebaseManager.saveUserProfile(profile: user)
             } catch {
-                ErrorHandler.shared.handle(.firebase(.saveDataFailed))
+                ErrorHandler.shared.handle(.firebase(.saveFailed))
             }
         }
     }
@@ -178,7 +178,7 @@ class IAPManager: ObservableObject {
             do {
                 try await appState.firebaseManager.saveUserProfile(profile: user)
             } catch {
-                ErrorHandler.shared.handle(.firebase(.saveDataFailed))
+                ErrorHandler.shared.handle(.firebase(.saveFailed))
             }
         }
     }
@@ -199,7 +199,7 @@ class IAPManager: ObservableObject {
                 try await appState.firebaseManager.saveUserProfile(profile: user)
                 AnalyticsManager.shared.trackSubscriptionStarted(plan: "vip_monthly")
             } catch {
-                ErrorHandler.shared.handle(.firebase(.saveDataFailed))
+                ErrorHandler.shared.handle(.firebase(.saveFailed))
             }
         }
     }
@@ -218,7 +218,7 @@ class IAPManager: ObservableObject {
             do {
                 try await appState.firebaseManager.saveUserProfile(profile: user)
             } catch {
-                ErrorHandler.shared.handle(.firebase(.saveDataFailed))
+                ErrorHandler.shared.handle(.firebase(.saveFailed))
             }
         }
     }
@@ -237,7 +237,7 @@ class IAPManager: ObservableObject {
             do {
                 try await appState.firebaseManager.saveUserProfile(profile: user)
             } catch {
-                ErrorHandler.shared.handle(.firebase(.saveDataFailed))
+                ErrorHandler.shared.handle(.firebase(.saveFailed))
             }
         }
     }

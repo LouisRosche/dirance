@@ -4,18 +4,18 @@ import CoreHaptics
 /// Manages haptic feedback throughout the app for improved user experience
 /// Provides tactile feedback for game events, UI interactions, and achievements
 @MainActor
-class HapticManager {
+class HapticManager: ObservableObject {
     static let shared = HapticManager()
 
     // MARK: - Feedback Generators
 
-    private let impactLight = UIImpactFeedbackGenerator(style: .light)
-    private let impactMedium = UIImpactFeedbackGenerator(style: .medium)
-    private let impactHeavy = UIImpactFeedbackGenerator(style: .heavy)
-    private let impactRigid = UIImpactFeedbackGenerator(style: .rigid)
-    private let impactSoft = UIImpactFeedbackGenerator(style: .soft)
-    private let notification = UINotificationFeedbackGenerator()
-    private let selection = UISelectionFeedbackGenerator()
+    let impactLight = UIImpactFeedbackGenerator(style: .light)
+    let impactMedium = UIImpactFeedbackGenerator(style: .medium)
+    let impactHeavy = UIImpactFeedbackGenerator(style: .heavy)
+    let impactRigid = UIImpactFeedbackGenerator(style: .rigid)
+    let impactSoft = UIImpactFeedbackGenerator(style: .soft)
+    let notification = UINotificationFeedbackGenerator()
+    let selection = UISelectionFeedbackGenerator()
 
     // Core Haptics Engine (iOS 13+)
     private var hapticEngine: CHHapticEngine?

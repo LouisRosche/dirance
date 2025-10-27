@@ -117,7 +117,7 @@ enum AudioError {
     case noSongsInLibrary
     case musicPermissionDenied
     case songNotFound
-    case analysiseFailed
+    case analysisFailed
     case playbackFailed
     case drmRestricted
 
@@ -204,6 +204,8 @@ enum IAPError {
     case verificationFailed
     case networkRequired
     case userCancelled
+    case unknownProduct
+    case grantFailed
 
     var userMessage: String {
         switch self {
@@ -217,6 +219,10 @@ enum IAPError {
             return "Internet connection required to make purchases."
         case .userCancelled:
             return "Purchase cancelled."
+        case .unknownProduct:
+            return "This product is no longer available."
+        case .grantFailed:
+            return "Purchase succeeded but couldn't grant items. Contact support."
         }
     }
 
@@ -232,6 +238,10 @@ enum IAPError {
             return "Connect to the internet to complete purchases."
         case .userCancelled:
             return "You can purchase anytime from the Shop."
+        case .unknownProduct:
+            return "The app may need an update. Check the App Store."
+        case .grantFailed:
+            return "Contact support@movematch.com with your receipt for assistance."
         }
     }
 }

@@ -247,6 +247,8 @@ struct UserProfile: Codable {
     var seasonPassXP: Int = 0
     var isVIP: Bool = false
     var vipExpiry: Date?
+    var adFreeUntil: Date?
+    var hasFitnessPack: Bool = false
 
     // Calculated properties
     var xpToNextLevel: Int {

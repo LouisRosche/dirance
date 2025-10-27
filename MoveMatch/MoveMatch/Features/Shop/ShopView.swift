@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import StoreKit
 
 struct ShopView: View {
 
@@ -13,6 +14,16 @@ struct ShopView: View {
     @EnvironmentObject var appState: AppState
 
     @State private var selectedTab = 0
+    @State private var isPurchasing = false
+    @State private var showError = false
+    @State private var errorMessage = ""
+
+    @StateObject private var iapManager: IAPManager
+
+    init() {
+        // IAPManager will be initialized in onAppear with appState
+        _iapManager = StateObject(wrappedValue: IAPManager())
+    }
 
     var body: some View {
         NavigationStack {
@@ -28,16 +39,17 @@ struct ShopView: View {
 
                 // Content
                 TabView(selection: $selectedTab) {
-                    GemsShopView()
+                    GemsShopView(iapManager: iapManager, appState: appState, isPurchasing: $isPurchasing)
                         .tag(0)
 
                     MovesShopView()
                         .tag(1)
 
-                    VIPShopView()
+                    VIPShopView(iapManager: iapManager, appState: appState, isPurchasing: $isPurchasing)
                         .tag(2)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
+                .disabled(isPurchasing)
             }
             .navigationTitle("Shop")
             .navigationBarTitleDisplayMode(.inline)
@@ -48,6 +60,26 @@ struct ShopView: View {
                     }
                 }
             }
+            .overlay {
+                if isPurchasing {
+                    ZStack {
+                        Color.black.opacity(0.3)
+                        ProgressView()
+                            .scaleEffect(1.5)
+                            .tint(.white)
+                    }
+                    .ignoresSafeArea()
+                }
+            }
+            .alert("Purchase Error", isPresented: $showError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(errorMessage)
+            }
+            .onAppear {
+                // Initialize IAP manager with app state
+                iapManager.setAppState(appState)
+            }
         }
     }
 }
@@ -56,27 +88,30 @@ struct ShopView: View {
 
 struct GemsShopView: View {
 
-    @EnvironmentObject var appState: AppState
-
-    let products: [(String, Int, String, String)] = [
-        ("Starter Pack", 100, "$0.99", "gem.fill"),
-        ("Popular Pack", 500, "$2.99", "sparkles"),
-        ("Mega Pack", 1500, "$9.99", "star.fill")
-    ]
+    @ObservedObject var iapManager: IAPManager
+    @ObservedObject var appState: AppState
+    @Binding var isPurchasing: Bool
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                ForEach(products, id: \.0) { product in
+                ForEach(iapManager.products.filter { product in
+                    product.id.contains("gems")
+                }, id: \.id) { product in
                     ProductCard(
-                        title: product.0,
-                        subtitle: "\(product.1) Gems",
-                        price: product.2,
-                        icon: product.3,
+                        title: product.displayName,
+                        subtitle: gemAmount(for: product.id),
+                        price: product.displayPrice,
+                        icon: iconFor(product.id),
                         iconColor: .cyan
                     ) {
                         purchaseProduct(product)
                     }
+                }
+
+                if iapManager.products.isEmpty {
+                    ProgressView("Loading products...")
+                        .padding()
                 }
 
                 Text("Gems can be used to unlock moves, power-ups, and more!")
@@ -88,14 +123,47 @@ struct GemsShopView: View {
         }
     }
 
-    private func purchaseProduct(_ product: (String, Int, String, String)) {
-        // TODO: Integrate StoreKit
-        print("Purchasing: \(product.0)")
+    private func gemAmount(for productID: String) -> String {
+        if productID.contains("100") { return "100 Gems" }
+        if productID.contains("500") { return "500 Gems" }
+        if productID.contains("1500") { return "1,500 Gems" }
+        return "Gems"
+    }
 
-        // Simulate purchase
-        if var user = appState.currentUser {
-            user.addGems(product.1)
-            appState.currentUser = user
+    private func iconFor(_ productID: String) -> String {
+        if productID.contains("100") { return "gem.fill" }
+        if productID.contains("500") { return "sparkles" }
+        if productID.contains("1500") { return "star.fill" }
+        return "gem.fill"
+    }
+
+    private func purchaseProduct(_ product: Product) {
+        isPurchasing = true
+        HapticManager.shared.buttonTap()
+
+        AnalyticsManager.shared.trackIAPAttempt(
+            productId: product.id,
+            price: product.price.doubleValue
+        )
+
+        Task {
+            let success = await iapManager.purchase(product)
+            isPurchasing = false
+
+            if success {
+                HapticManager.shared.success()
+                AnalyticsManager.shared.trackIAPSuccess(
+                    productId: product.id,
+                    price: product.price.doubleValue,
+                    revenue: product.price.doubleValue
+                )
+            } else {
+                HapticManager.shared.error()
+                AnalyticsManager.shared.trackIAPFailed(
+                    productId: product.id,
+                    reason: "user_cancelled_or_failed"
+                )
+            }
         }
     }
 }
@@ -155,7 +223,9 @@ struct MovesShopView: View {
 
 struct VIPShopView: View {
 
-    @EnvironmentObject var appState: AppState
+    @ObservedObject var iapManager: IAPManager
+    @ObservedObject var appState: AppState
+    @Binding var isPurchasing: Bool
 
     var body: some View {
         ScrollView {
@@ -185,27 +255,31 @@ struct VIPShopView: View {
 
                 // Subscribe button
                 if !(appState.currentUser?.isVIP ?? false) {
-                    Button {
-                        subscribeToVIP()
-                    } label: {
-                        VStack(spacing: 8) {
-                            Text("Subscribe to VIP")
-                                .font(.headline)
+                    if let vipProduct = iapManager.products.first(where: { $0.id.contains("vip") }) {
+                        Button {
+                            subscribeToVIP(vipProduct)
+                        } label: {
+                            VStack(spacing: 8) {
+                                Text("Subscribe to VIP")
+                                    .font(.headline)
 
-                            Text("$9.99/month • Cancel anytime")
-                                .font(.caption)
-                        }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(
-                            LinearGradient(
-                                colors: [.purple, .pink],
-                                startPoint: .leading,
-                                endPoint: .trailing
+                                Text("\(vipProduct.displayPrice)/month • Cancel anytime")
+                                    .font(.caption)
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(
+                                LinearGradient(
+                                    colors: [.purple, .pink],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
                             )
-                        )
-                        .cornerRadius(12)
+                            .cornerRadius(12)
+                        }
+                    } else {
+                        ProgressView("Loading VIP subscription...")
                     }
                 } else {
                     VStack(spacing: 12) {
@@ -220,7 +294,9 @@ struct VIPShopView: View {
                         }
 
                         Button("Manage Subscription") {
-                            // Open App Store subscriptions
+                            if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                                UIApplication.shared.open(url)
+                            }
                         }
                         .font(.caption)
                     }
@@ -233,15 +309,33 @@ struct VIPShopView: View {
         }
     }
 
-    private func subscribeToVIP() {
-        // TODO: Integrate StoreKit subscriptions
-        print("Subscribing to VIP...")
+    private func subscribeToVIP(_ product: Product) {
+        isPurchasing = true
+        HapticManager.shared.buttonTap()
 
-        // Simulate subscription
-        if var user = appState.currentUser {
-            user.isVIP = true
-            user.vipExpiry = Calendar.current.date(byAdding: .month, value: 1, to: Date())
-            appState.currentUser = user
+        AnalyticsManager.shared.trackIAPAttempt(
+            productId: product.id,
+            price: product.price.doubleValue
+        )
+
+        Task {
+            let success = await iapManager.purchase(product)
+            isPurchasing = false
+
+            if success {
+                HapticManager.shared.success()
+                AnalyticsManager.shared.trackIAPSuccess(
+                    productId: product.id,
+                    price: product.price.doubleValue,
+                    revenue: product.price.doubleValue
+                )
+            } else {
+                HapticManager.shared.error()
+                AnalyticsManager.shared.trackIAPFailed(
+                    productId: product.id,
+                    reason: "user_cancelled_or_failed"
+                )
+            }
         }
     }
 }

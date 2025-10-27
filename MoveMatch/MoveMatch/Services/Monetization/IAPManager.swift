@@ -15,8 +15,10 @@ class IAPManager: ObservableObject {
     @Published var purchasedProductIDs: Set<String> = []
 
     private var transactionListener: Task<Void, Error>?
+    private weak var appState: AppState?
 
-    init() {
+    init(appState: AppState? = nil) {
+        self.appState = appState
         transactionListener = listenForTransactions()
         Task {
             await loadProducts()
@@ -26,6 +28,10 @@ class IAPManager: ObservableObject {
 
     deinit {
         transactionListener?.cancel()
+    }
+
+    func setAppState(_ appState: AppState) {
+        self.appState = appState
     }
 
     // MARK: - Load Products
@@ -104,13 +110,12 @@ class IAPManager: ObservableObject {
 
     private func grantEntitlement(for transaction: Transaction) async {
         guard let productID = IAPProduct(rawValue: transaction.productID) else {
-            print("⚠️ Unknown product ID: \(transaction.productID)")
+            ErrorHandler.shared.handle(.iap(.unknownProduct))
             return
         }
 
         switch productID {
         case .gems100:
-            // Grant 100 gems
             await grantGems(100)
 
         case .gems500:
@@ -132,32 +137,109 @@ class IAPManager: ObservableObject {
             await unlockFitnessPack()
         }
 
-        // Log analytics
-        // Analytics.logEvent("purchase", parameters: ["product_id": productID.rawValue])
+        AnalyticsManager.shared.trackIAPSuccess(
+            productId: productID.rawValue,
+            price: 0, // Will be filled by caller with actual price
+            revenue: 0
+        )
     }
 
     private func grantGems(_ amount: Int) async {
-        // This would update user profile in Firebase
-        print("✅ Granted \(amount) gems")
-        // AppState.shared.currentUser?.addGems(amount)
+        guard let appState = appState else {
+            ErrorHandler.shared.handle(.iap(.grantFailed))
+            return
+        }
+
+        guard var user = appState.currentUser else { return }
+        user.addGems(amount)
+        appState.currentUser = user
+
+        // Save to Firebase
+        Task {
+            do {
+                try await appState.firebaseManager.saveUserProfile(profile: user)
+            } catch {
+                ErrorHandler.shared.handle(.firebase(.saveDataFailed))
+            }
+        }
     }
 
     private func unlockSeasonPass() async {
-        print("✅ Unlocked Season Pass")
-        // AppState.shared.currentUser?.hasSeasonPass = true
+        guard let appState = appState else {
+            ErrorHandler.shared.handle(.iap(.grantFailed))
+            return
+        }
+
+        guard var user = appState.currentUser else { return }
+        user.hasSeasonPass = true
+        appState.currentUser = user
+
+        Task {
+            do {
+                try await appState.firebaseManager.saveUserProfile(profile: user)
+            } catch {
+                ErrorHandler.shared.handle(.firebase(.saveDataFailed))
+            }
+        }
     }
 
     private func activateVIP() async {
-        print("✅ Activated VIP")
-        // AppState.shared.currentUser?.isVIP = true
+        guard let appState = appState else {
+            ErrorHandler.shared.handle(.iap(.grantFailed))
+            return
+        }
+
+        guard var user = appState.currentUser else { return }
+        user.isVIP = true
+        user.vipExpiry = Calendar.current.date(byAdding: .month, value: 1, to: Date())
+        appState.currentUser = user
+
+        Task {
+            do {
+                try await appState.firebaseManager.saveUserProfile(profile: user)
+                AnalyticsManager.shared.trackSubscriptionStarted(plan: "vip_monthly")
+            } catch {
+                ErrorHandler.shared.handle(.firebase(.saveDataFailed))
+            }
+        }
     }
 
     private func disableAdsFor(hours: Int) async {
-        print("✅ Disabled ads for \(hours) hours")
+        guard let appState = appState else {
+            ErrorHandler.shared.handle(.iap(.grantFailed))
+            return
+        }
+
+        guard var user = appState.currentUser else { return }
+        user.adFreeUntil = Calendar.current.date(byAdding: .hour, value: hours, to: Date())
+        appState.currentUser = user
+
+        Task {
+            do {
+                try await appState.firebaseManager.saveUserProfile(profile: user)
+            } catch {
+                ErrorHandler.shared.handle(.firebase(.saveDataFailed))
+            }
+        }
     }
 
     private func unlockFitnessPack() async {
-        print("✅ Unlocked Fitness Pack")
+        guard let appState = appState else {
+            ErrorHandler.shared.handle(.iap(.grantFailed))
+            return
+        }
+
+        guard var user = appState.currentUser else { return }
+        user.hasFitnessPack = true
+        appState.currentUser = user
+
+        Task {
+            do {
+                try await appState.firebaseManager.saveUserProfile(profile: user)
+            } catch {
+                ErrorHandler.shared.handle(.firebase(.saveDataFailed))
+            }
+        }
     }
 
     private func updatePurchasedProducts() async {

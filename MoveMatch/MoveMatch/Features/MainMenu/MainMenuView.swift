@@ -13,6 +13,7 @@ struct MainMenuView: View {
     @State private var showingSongSelection = false
     @State private var showingProfile = false
     @State private var showingShop = false
+    @State private var showingLeaderboard = false
 
     var body: some View {
         NavigationStack {
@@ -114,7 +115,7 @@ struct MainMenuView: View {
                         }
 
                         MenuButton(icon: "chart.bar.fill", title: "Leaderboard") {
-                            // TODO: Show leaderboard
+                            showingLeaderboard = true
                         }
                     }
                     .padding(.horizontal)
@@ -140,6 +141,9 @@ struct MainMenuView: View {
             }
             .sheet(isPresented: $showingShop) {
                 ShopView()
+            }
+            .sheet(isPresented: $showingLeaderboard) {
+                LeaderboardView()
             }
         }
     }
